@@ -186,10 +186,12 @@ create policy "members update plan_steps" on public.plan_steps for update using 
 
 create policy "members read activity" on public.activity_log for select using (public.is_pair_member(pair_id));
 create policy "members write activity" on public.activity_log for insert with check (public.is_pair_member(pair_id));
+create policy "members delete activity" on public.activity_log for delete using (public.is_pair_member(pair_id));
 
 alter publication supabase_realtime add table public.events;
 alter publication supabase_realtime add table public.pairs;
 alter publication supabase_realtime add table public.shared_items;
 alter publication supabase_realtime add table public.wishlist;
 alter publication supabase_realtime add table public.date_plans;
+alter publication supabase_realtime add table public.plan_steps;
 alter publication supabase_realtime add table public.activity_log;

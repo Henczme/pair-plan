@@ -109,12 +109,16 @@
               </article>
             </div>
             <div class="home-grid">
+              <section class="panel home-calendar-panel">
+                <h3>共同日历</h3>
+                <div id="homeCalendar"></div>
+              </section>
               <section class="panel">
                 <h3>最近更新</h3>
                 <div class="list" id="activityList"></div>
               </section>
               <section class="panel">
-                <h3>本周日历</h3>
+                <h3>近期安排</h3>
                 <div class="list" id="weekEvents"></div>
               </section>
             </div>
@@ -206,6 +210,8 @@
               <section class="panel">
                 <h3>账户</h3>
                 <p id="memberInfo" class="quiet"></p>
+                <button class="secondary-button full-width" id="enableNotifications" type="button">开启提醒通知</button>
+                <p id="notificationStatus" class="quiet">提醒会在 App 打开或安装到桌面后尽量准时推送。</p>
                 <button class="secondary-button full-width" id="signOut" type="button">退出登录</button>
               </section>
             </div>

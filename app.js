@@ -20,7 +20,9 @@ const state = {
   wishes: [],
   plans: [],
   activities: [],
-  channel: null
+  channel: null,
+  syncTimer: null,
+  notificationTimers: []
 };
 
 const els = {
@@ -50,6 +52,7 @@ const els = {
   wishCount: q("#wishCount"),
   dateCount: q("#dateCount"),
   activityList: q("#activityList"),
+  homeCalendar: q("#homeCalendar"),
   weekEvents: q("#weekEvents"),
   eventForm: q("#eventForm"),
   eventTitle: q("#eventTitle"),
@@ -85,6 +88,8 @@ const els = {
   meetingPlace: q("#meetingPlace"),
   inviteDisplay: q("#inviteDisplay"),
   memberInfo: q("#memberInfo"),
+  enableNotifications: q("#enableNotifications"),
+  notificationStatus: q("#notificationStatus"),
   signOut: q("#signOut")
 };
 
@@ -142,11 +147,15 @@ function bindEvents() {
     localStorage.setItem(timezoneKey, els.meetingTimezone.value);
     renderMeetingPreview();
   });
+  on(els.enableNotifications, "click", enableNotifications);
   on(els.signOut, "click", async () => {
     await state.supabase.auth.signOut();
     location.reload();
   });
   document.addEventListener("click", handleActions);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.pair) reloadEverythingAndRender();
+  });
 }
 
 async function loadPair() {
@@ -161,6 +170,7 @@ async function loadPair() {
   state.pair = member.pairs;
   await loadAll();
   subscribeRealtime();
+  startAutoSync();
   showGate("workspace");
   render();
 }
@@ -200,10 +210,10 @@ async function loadAll() {
   const pairId = state.pair.id;
   const [events, todos, wishes, plans, activities] = await Promise.all([
     state.supabase.from("events").select("*").eq("pair_id", pairId).order("date", { ascending: true }),
-    state.supabase.from("shared_items").select("*").eq("pair_id", pairId).order("created_at", { ascending: false }),
+    state.supabase.from("shared_items").select("*").eq("pair_id", pairId).eq("status", "open").order("created_at", { ascending: false }),
     state.supabase.from("wishlist").select("*").eq("pair_id", pairId).order("created_at", { ascending: false }),
     state.supabase.from("date_plans").select("*, plan_steps(*)").eq("pair_id", pairId).order("date", { ascending: true }),
-    state.supabase.from("activity_log").select("*").eq("pair_id", pairId).order("created_at", { ascending: false }).limit(20)
+    state.supabase.from("activity_log").select("*").eq("pair_id", pairId).order("created_at", { ascending: false }).limit(5)
   ]);
   state.events = events.data || [];
   state.todos = todos.data || [];
@@ -222,8 +232,16 @@ function subscribeRealtime() {
     .on("postgres_changes", { event: "*", schema: "public", table: "shared_items", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
     .on("postgres_changes", { event: "*", schema: "public", table: "wishlist", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
     .on("postgres_changes", { event: "*", schema: "public", table: "date_plans", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
+    .on("postgres_changes", { event: "*", schema: "public", table: "plan_steps" }, reloadAndRender)
     .on("postgres_changes", { event: "*", schema: "public", table: "activity_log", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
     .subscribe();
+}
+
+function startAutoSync() {
+  clearInterval(state.syncTimer);
+  state.syncTimer = setInterval(() => {
+    if (!document.hidden && state.pair) reloadEverythingAndRender();
+  }, 20000);
 }
 
 async function reloadPairAndRender() {
@@ -233,6 +251,12 @@ async function reloadPairAndRender() {
 }
 
 async function reloadAndRender() {
+  await loadAll();
+  render();
+}
+
+async function reloadEverythingAndRender() {
+  await reloadPairAndRender();
   await loadAll();
   render();
 }
@@ -313,9 +337,9 @@ async function handleActions(event) {
   const deleteEvent = event.target.closest("[data-delete-event]");
   if (toggleTodo) {
     const item = state.todos.find((todo) => todo.id === toggleTodo.dataset.toggleTodo);
-    const done = item.status !== "done";
-    await state.supabase.from("shared_items").update({ status: done ? "done" : "open", completed_by: done ? state.user.id : null, completed_at: done ? new Date().toISOString() : null }).eq("id", item.id);
-    await logActivity(state.pair.id, "updated_todo", "todo", item.id, `${done ? "完成" : "恢复"}了一起做：${item.title}`);
+    if (!item) return;
+    await logActivity(state.pair.id, "completed_todo", "todo", item.id, `完成了一起做：${item.title}`);
+    await state.supabase.from("shared_items").delete().eq("id", item.id);
   }
   if (toggleWish) {
     const item = state.wishes.find((wish) => wish.id === toggleWish.dataset.toggleWish);
@@ -343,6 +367,7 @@ function render() {
   renderTodos();
   renderWishes();
   renderPlans();
+  scheduleNotifications();
 }
 
 function renderHome() {
@@ -353,11 +378,29 @@ function renderHome() {
   els.wishCount.textContent = openWishes.length;
   els.dateCount.textContent = openPlans.length;
   renderCountdown();
+  renderHomeCalendar();
   els.activityList.innerHTML = state.activities.length ? state.activities.map((item) => `<article class="item-card"><div class="item-title">${escapeHtml(item.text)}</div><div class="item-meta"><span class="pill">${formatDateTime(item.created_at)}</span></div></article>`).join("") : empty("还没有更新。");
   const weekEnd = new Date();
   weekEnd.setDate(weekEnd.getDate() + 7);
-  const events = state.events.filter((event) => new Date(event.date) <= weekEnd).slice(0, 6);
-  els.weekEvents.innerHTML = events.length ? events.map(renderEventCard).join("") : empty("本周没有共同日历。");
+  const entries = getCalendarEntries().filter((entry) => entry.date >= startOfToday() && entry.date <= weekEnd).slice(0, 6);
+  els.weekEvents.innerHTML = entries.length ? entries.map(renderCalendarEntryCard).join("") : empty("本周没有共同日历。");
+}
+
+function renderHomeCalendar() {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const firstCell = new Date(monthStart);
+  firstCell.setDate(1 - ((monthStart.getDay() + 6) % 7));
+  const entries = getCalendarEntries();
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(firstCell);
+    date.setDate(firstCell.getDate() + index);
+    const key = toDateKey(date);
+    const dayEntries = entries.filter((entry) => toDateKey(entry.date) === key);
+    const classes = ["calendar-day", date.getMonth() === now.getMonth() ? "" : "muted-day", toDateKey(date) === toDateKey(now) ? "today" : "", dayEntries.length ? "has-items" : ""].filter(Boolean).join(" ");
+    return `<div class="${classes}"><span>${date.getDate()}</span>${dayEntries.slice(0, 3).map((entry) => `<i class="${entry.owner} ${entry.kind}" title="${escapeHtml(entry.title)}"></i>`).join("")}</div>`;
+  }).join("");
+  els.homeCalendar.innerHTML = `<div class="calendar-head"><strong>${now.getFullYear()}年 ${now.getMonth() + 1}月</strong><span>每年纪念日会自动出现在对应月份</span></div><div class="calendar-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="calendar-grid">${cells}</div><div class="calendar-legend"><span><i class="mine"></i>我添加</span><span><i class="partner"></i>对方添加</span><span><i class="meeting"></i>见面</span><span><i class="anniversary"></i>纪念日</span></div>`;
 }
 
 function renderCountdown() {
@@ -386,6 +429,10 @@ function renderEventCard(event) {
   return `<article class="item-card"><div class="item-meta"><span class="pill">${escapeHtml(event.type)}</span><span class="pill">${escapeHtml(event.date)} ${event.time || ""}</span></div><div class="item-title">${escapeHtml(event.title)}</div><p class="quiet">${escapeHtml(event.location || "")}${event.note ? " · " + escapeHtml(event.note) : ""}</p><div class="item-actions"><button data-delete-event="${event.id}" type="button">删除</button></div></article>`;
 }
 
+function renderCalendarEntryCard(entry) {
+  return `<article class="item-card"><div class="item-meta"><span class="pill">${escapeHtml(entry.label)}</span><span class="pill">${formatDateOnly(entry.date)} ${entry.time || ""}</span><span class="pill">${entry.ownerLabel}</span></div><div class="item-title">${escapeHtml(entry.title)}</div><p class="quiet">${escapeHtml(entry.meta || "")}</p></article>`;
+}
+
 function renderTodos() {
   els.todoList.innerHTML = state.todos.length ? state.todos.map((item) => `<article class="item-card ${item.status === "done" ? "done" : ""}"><div class="item-meta"><span class="pill">${escapeHtml(item.category || "未分类")}</span><span class="pill">${priorityLabel(item.priority)}</span></div><div class="item-title">${escapeHtml(item.title)}</div><div class="item-actions"><button data-toggle-todo="${item.id}" type="button">${item.status === "done" ? "恢复" : "完成"}</button></div></article>`).join("") : empty("还没有一起做的事。");
 }
@@ -405,6 +452,12 @@ function renderSteps(steps) {
 
 async function logActivity(pairId, action, entityType, entityId, text) {
   await state.supabase.from("activity_log").insert({ pair_id: pairId, actor_id: state.user.id, action, entity_type: entityType, entity_id: entityId, text });
+  await pruneActivities(pairId);
+}
+
+async function pruneActivities(pairId) {
+  const { data } = await state.supabase.from("activity_log").select("id").eq("pair_id", pairId).order("created_at", { ascending: false }).range(5, 1000);
+  if (data?.length) await state.supabase.from("activity_log").delete().in("id", data.map((item) => item.id));
 }
 
 function showGate(name) {
@@ -467,6 +520,143 @@ function renderMeetingPreview() {
 
 function renderMeetingTimes(date) {
   return `<span class="time-stack"><span>柏林 ${formatInTimezone(date, "Europe/Berlin")}</span><span>北京时间 ${formatInTimezone(date, "Asia/Shanghai")}</span></span>`;
+}
+
+function getCalendarEntries() {
+  const entries = state.events.map((event) => {
+    const date = getDisplayDateForEvent(event);
+    return {
+      id: `event-${event.id}`,
+      title: event.title,
+      date,
+      time: event.time || "",
+      label: event.type || "日历",
+      kind: event.type === "纪念日" ? "anniversary" : "event",
+      owner: event.created_by === state.user.id ? "mine" : "partner",
+      ownerLabel: event.created_by === state.user.id ? "我添加" : "对方添加",
+      meta: [event.location, event.note].filter(Boolean).join(" · "),
+      notifyAt: event.time ? zonedDateTimeToUtcIso(`${toDateKey(date)}T${event.time.slice(0, 5)}`, els.meetingTimezone?.value || guessMeetingTimezone()) : null
+    };
+  });
+  state.plans.forEach((plan) => {
+    if (!plan.date) return;
+    entries.push({
+      id: `plan-${plan.id}`,
+      title: plan.title,
+      date: parseDateOnly(plan.date),
+      time: "",
+      label: "约会计划",
+      kind: "plan",
+      owner: plan.created_by === state.user.id ? "mine" : "partner",
+      ownerLabel: plan.created_by === state.user.id ? "我添加" : "对方添加",
+      meta: plan.location || "",
+      notifyAt: null
+    });
+  });
+  if (state.pair?.next_meeting_at) {
+    entries.push({
+      id: `meeting-${state.pair.id}`,
+      title: "下一次见面",
+      date: new Date(state.pair.next_meeting_at),
+      time: formatTimeOnly(state.pair.next_meeting_at),
+      label: "见面",
+      kind: "meeting",
+      owner: "meeting",
+      ownerLabel: "见面提醒",
+      meta: state.pair.next_meeting_place || "",
+      notifyAt: state.pair.next_meeting_at
+    });
+  }
+  return entries.sort((a, b) => a.date - b.date);
+}
+
+function getDisplayDateForEvent(event) {
+  const date = parseDateOnly(event.date);
+  if (event.type !== "纪念日") return date;
+  const now = new Date();
+  const currentYearDate = new Date(now.getFullYear(), date.getMonth(), date.getDate());
+  return currentYearDate < startOfToday() ? new Date(now.getFullYear() + 1, date.getMonth(), date.getDate()) : currentYearDate;
+}
+
+function scheduleNotifications() {
+  state.notificationTimers.forEach(clearTimeout);
+  state.notificationTimers = [];
+  updateNotificationStatus();
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const now = Date.now();
+  getCalendarEntries().filter((entry) => entry.notifyAt).forEach((entry) => {
+    const when = new Date(entry.notifyAt).getTime();
+    [
+      { offset: 3600000, prefix: "1小时后" },
+      { offset: 0, prefix: "现在" }
+    ].forEach((reminder) => {
+      const delay = when - reminder.offset - now;
+      if (delay > 0 && delay < 7 * 86400000) {
+        state.notificationTimers.push(setTimeout(() => showNotification(`${reminder.prefix}：${entry.title}`, entry.meta || "PairPlan 提醒"), delay));
+      }
+    });
+  });
+}
+
+async function enableNotifications() {
+  if (!("Notification" in window)) {
+    alert("这个浏览器不支持通知。");
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  updateNotificationStatus();
+  if (permission === "granted") {
+    showNotification("PairPlan 提醒已开启", "App 打开或安装到桌面后会尽量准时提醒。");
+    scheduleNotifications();
+  }
+}
+
+function showNotification(title, body) {
+  if (navigator.serviceWorker?.ready) {
+    navigator.serviceWorker.ready.then((registration) => registration.showNotification(title, { body, icon: "icon.svg", badge: "icon.svg" })).catch(() => new Notification(title, { body }));
+  } else {
+    new Notification(title, { body });
+  }
+}
+
+function updateNotificationStatus() {
+  if (!els.notificationStatus) return;
+  if (!("Notification" in window)) {
+    els.notificationStatus.textContent = "当前浏览器不支持通知。";
+  } else if (Notification.permission === "granted") {
+    els.notificationStatus.textContent = "提醒已开启。后台长期推送受 iOS 和浏览器限制，打开或桌面安装时最可靠。";
+  } else if (Notification.permission === "denied") {
+    els.notificationStatus.textContent = "通知被系统拒绝，需要在浏览器或系统设置里重新允许。";
+  } else {
+    els.notificationStatus.textContent = "开启后会在见面和带时间的日历事件前提醒。";
+  }
+}
+
+function parseDateOnly(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+function toDateKey(value) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateOnly(value) {
+  return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", weekday: "short" }).format(value);
+}
+
+function formatTimeOnly(value) {
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
 
 function guessMeetingTimezone() {
