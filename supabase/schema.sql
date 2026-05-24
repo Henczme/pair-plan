@@ -188,6 +188,7 @@ create policy "members read activity" on public.activity_log for select using (p
 create policy "members write activity" on public.activity_log for insert with check (public.is_pair_member(pair_id));
 
 alter publication supabase_realtime add table public.events;
+alter publication supabase_realtime add table public.pairs;
 alter publication supabase_realtime add table public.shared_items;
 alter publication supabase_realtime add table public.wishlist;
 alter publication supabase_realtime add table public.date_plans;

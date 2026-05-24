@@ -5,6 +5,11 @@ const defaultConfig = {
   url: "https://wjozttzjtkpvclfcswev.supabase.co",
   key: "sb_publishable_69E3qjsbgGUq0119_Km4yA_t-phZznJ"
 };
+const timezoneKey = "pairplan_meeting_timezone_v1";
+const meetingTimezones = {
+  "Europe/Berlin": "德国柏林",
+  "Asia/Shanghai": "中国北京时间"
+};
 const state = {
   supabase: null,
   user: null,
@@ -75,6 +80,8 @@ const els = {
   planList: q("#planList"),
   meetingForm: q("#meetingForm"),
   meetingAt: q("#meetingAt"),
+  meetingTimezone: q("#meetingTimezone"),
+  meetingPreview: q("#meetingPreview"),
   meetingPlace: q("#meetingPlace"),
   inviteDisplay: q("#inviteDisplay"),
   memberInfo: q("#memberInfo"),
@@ -130,6 +137,11 @@ function bindEvents() {
   on(els.wishForm, "submit", addWish);
   on(els.datePlanForm, "submit", addPlan);
   on(els.meetingForm, "submit", saveMeeting);
+  on(els.meetingAt, "input", renderMeetingPreview);
+  on(els.meetingTimezone, "change", () => {
+    localStorage.setItem(timezoneKey, els.meetingTimezone.value);
+    renderMeetingPreview();
+  });
   on(els.signOut, "click", async () => {
     await state.supabase.auth.signOut();
     location.reload();
@@ -205,12 +217,19 @@ function subscribeRealtime() {
   const pairId = state.pair.id;
   state.channel = state.supabase
     .channel(`pair-${pairId}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "pairs", filter: `id=eq.${pairId}` }, reloadPairAndRender)
     .on("postgres_changes", { event: "*", schema: "public", table: "events", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
     .on("postgres_changes", { event: "*", schema: "public", table: "shared_items", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
     .on("postgres_changes", { event: "*", schema: "public", table: "wishlist", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
     .on("postgres_changes", { event: "*", schema: "public", table: "date_plans", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
     .on("postgres_changes", { event: "*", schema: "public", table: "activity_log", filter: `pair_id=eq.${pairId}` }, reloadAndRender)
     .subscribe();
+}
+
+async function reloadPairAndRender() {
+  const { data, error } = await state.supabase.from("pairs").select("*").eq("id", state.pair.id).single();
+  if (!error && data) state.pair = data;
+  render();
 }
 
 async function reloadAndRender() {
@@ -277,11 +296,14 @@ async function addPlan(event) {
 
 async function saveMeeting(event) {
   event.preventDefault();
-  const { error } = await state.supabase.from("pairs").update({ next_meeting_at: els.meetingAt.value || null, next_meeting_place: els.meetingPlace.value.trim() }).eq("id", state.pair.id);
+  const timezone = els.meetingTimezone.value || "Europe/Berlin";
+  const meetingIso = els.meetingAt.value ? zonedDateTimeToUtcIso(els.meetingAt.value, timezone) : null;
+  const { error } = await state.supabase.from("pairs").update({ next_meeting_at: meetingIso, next_meeting_place: els.meetingPlace.value.trim() }).eq("id", state.pair.id);
   if (error) return alert(error.message);
-  state.pair.next_meeting_at = els.meetingAt.value || null;
+  state.pair.next_meeting_at = meetingIso;
   state.pair.next_meeting_place = els.meetingPlace.value.trim();
   await logActivity(state.pair.id, "updated_meeting", "pair", state.pair.id, "更新了下一次见面");
+  await reloadPairAndRender();
   render();
 }
 
@@ -312,8 +334,10 @@ function render() {
   els.spaceLabel.textContent = state.pair.name;
   els.inviteDisplay.textContent = state.pair.invite_code;
   els.memberInfo.textContent = `${state.member.nickname} · ${state.user.email}`;
-  els.meetingAt.value = state.pair.next_meeting_at ? state.pair.next_meeting_at.slice(0, 16) : "";
+  els.meetingTimezone.value = localStorage.getItem(timezoneKey) || guessMeetingTimezone();
+  els.meetingAt.value = state.pair.next_meeting_at ? formatForDateTimeInput(state.pair.next_meeting_at, els.meetingTimezone.value) : "";
   els.meetingPlace.value = state.pair.next_meeting_place || "";
+  renderMeetingPreview();
   renderHome();
   renderEvents();
   renderTodos();
@@ -342,7 +366,8 @@ function renderCountdown() {
     els.meetingMeta.textContent = "在设置里添加日期和地点。";
     return;
   }
-  const diff = new Date(state.pair.next_meeting_at) - new Date();
+  const meetingDate = new Date(state.pair.next_meeting_at);
+  const diff = meetingDate - new Date();
   if (diff <= 0) {
     els.countdownText.textContent = "就是今天";
   } else {
@@ -350,7 +375,7 @@ function renderCountdown() {
     const hours = Math.floor((diff % 86400000) / 3600000);
     els.countdownText.textContent = `${days} 天 ${hours} 小时`;
   }
-  els.meetingMeta.textContent = `${formatDateTime(state.pair.next_meeting_at)} · ${state.pair.next_meeting_place || "未设置地点"}`;
+  els.meetingMeta.innerHTML = `${renderMeetingTimes(meetingDate)}${state.pair.next_meeting_place ? `<br>${escapeHtml(state.pair.next_meeting_place)}` : "<br>未设置地点"}`;
 }
 
 function renderEvents() {
@@ -427,6 +452,75 @@ function toNumber(value) {
 
 function formatDateTime(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function renderMeetingPreview() {
+  if (!els.meetingPreview) return;
+  if (!els.meetingAt.value) {
+    els.meetingPreview.textContent = "保存后会同时显示柏林和北京时间。";
+    return;
+  }
+  const timezone = els.meetingTimezone.value || "Europe/Berlin";
+  const date = new Date(zonedDateTimeToUtcIso(els.meetingAt.value, timezone));
+  els.meetingPreview.innerHTML = `${meetingTimezones[timezone]}输入：${escapeHtml(els.meetingAt.value.replace("T", " "))}<br>${renderMeetingTimes(date)}`;
+}
+
+function renderMeetingTimes(date) {
+  return `<span class="time-stack"><span>柏林 ${formatInTimezone(date, "Europe/Berlin")}</span><span>北京时间 ${formatInTimezone(date, "Asia/Shanghai")}</span></span>`;
+}
+
+function guessMeetingTimezone() {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return zone === "Asia/Shanghai" ? "Asia/Shanghai" : "Europe/Berlin";
+}
+
+function formatInTimezone(value, timeZone) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZoneName: "short"
+  }).format(value);
+}
+
+function formatForDateTimeInput(value, timeZone) {
+  const parts = getZonedParts(new Date(value), timeZone);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+function zonedDateTimeToUtcIso(value, timeZone) {
+  const [datePart, timePart] = value.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute] = timePart.split(":").map(Number);
+  const desiredUtcMs = Date.UTC(year, month - 1, day, hour, minute);
+  let utcMs = desiredUtcMs;
+  for (let i = 0; i < 3; i += 1) {
+    const parts = getZonedParts(new Date(utcMs), timeZone);
+    const actualUtcMs = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+    utcMs += desiredUtcMs - actualUtcMs;
+  }
+  return new Date(utcMs).toISOString();
+}
+
+function getZonedParts(value, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(value).reduce((result, part) => {
+    if (part.type !== "literal") result[part.type] = part.value;
+    return result;
+  }, {});
+  if (parts.hour === "24") parts.hour = "00";
+  return parts;
 }
 
 function q(selector) {

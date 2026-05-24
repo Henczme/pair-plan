@@ -61,6 +61,7 @@ label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; }
 .item-title { font-weight: 850; overflow-wrap: anywhere; }
 .item-meta, .item-actions { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
 .pill { display: inline-flex; align-items: center; min-height: 26px; padding: 0 8px; border-radius: 999px; background: var(--soft); color: var(--muted); font-size: 12px; font-weight: 750; }
+.time-stack { display: grid; gap: 3px; }
 .item-actions button { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 .invite-code { margin-top: 14px; font-size: 32px; font-weight: 900; letter-spacing: 3px; }
 .hidden { display: none !important; }

@@ -188,7 +188,14 @@
               <form class="panel form-grid" id="meetingForm">
                 <h3>下一次见面</h3>
                 <label><span>日期时间</span><input id="meetingAt" type="datetime-local" /></label>
+                <label><span>输入时间按哪个时区</span>
+                  <select id="meetingTimezone">
+                    <option value="Europe/Berlin">德国柏林</option>
+                    <option value="Asia/Shanghai">中国北京时间</option>
+                  </select>
+                </label>
                 <label><span>地点</span><input id="meetingPlace" /></label>
+                <p class="quiet" id="meetingPreview">保存后会同时显示柏林和北京时间。</p>
                 <button class="primary-button full-width" type="submit">保存见面信息</button>
               </form>
               <section class="panel">
