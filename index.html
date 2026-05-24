@@ -202,6 +202,17 @@
                 <p class="quiet" id="meetingPreview">保存后会同时显示柏林和北京时间。</p>
                 <button class="primary-button full-width" type="submit">保存见面信息</button>
               </form>
+              <form class="panel form-grid" id="importantDayForm">
+                <h3>重要日</h3>
+                <label><span>名称</span><input id="importantTitle" placeholder="纪念日、生日、签证、旅行出发..." /></label>
+                <div class="row">
+                  <label><span>日期</span><input id="importantDate" type="date" /></label>
+                  <label><span>时间</span><input id="importantTime" type="time" /></label>
+                </div>
+                <label class="inline-check"><input id="importantRepeat" type="checkbox" /> <span>每年重复</span></label>
+                <label><span>备注</span><input id="importantNote" /></label>
+                <button class="primary-button full-width" type="submit">添加重要日</button>
+              </form>
               <section class="panel">
                 <h3>邀请码</h3>
                 <p class="invite-code" id="inviteDisplay">----</p>

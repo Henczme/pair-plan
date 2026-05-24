@@ -35,6 +35,8 @@ h1, h2, h3, p { margin: 0; }
 h2 { margin-top: 4px; font-size: clamp(32px, 5vw, 50px); line-height: 1; }
 h3 { font-size: 18px; }
 label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; }
+.inline-check { display: flex; align-items: center; gap: 8px; }
+.inline-check input { width: auto; min-height: auto; }
 .primary-button, .secondary-button { min-height: 42px; padding: 0 16px; border-radius: 8px; border: 1px solid transparent; }
 .primary-button { background: var(--ink); color: #fff; }
 .secondary-button { border-color: var(--line); background: var(--surface); color: var(--ink); }
@@ -63,8 +65,10 @@ label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; }
 .item-meta, .item-actions { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
 .pill { display: inline-flex; align-items: center; min-height: 26px; padding: 0 8px; border-radius: 999px; background: var(--soft); color: var(--muted); font-size: 12px; font-weight: 750; }
 .time-stack { display: grid; gap: 3px; }
-.calendar-head { display: flex; align-items: end; justify-content: space-between; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 13px; }
+.place-line { display: block; margin-top: 12px; }
+.calendar-head { display: grid; grid-template-columns: 42px 1fr 42px; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; }
 .calendar-head strong { color: var(--ink); font-size: 20px; }
+.calendar-head button { min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font-size: 22px; }
 .calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .calendar-weekdays { margin-top: 14px; color: var(--muted); font-size: 12px; font-weight: 800; text-align: center; }
 .calendar-grid { margin-top: 6px; }

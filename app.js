@@ -22,7 +22,8 @@ const state = {
   activities: [],
   channel: null,
   syncTimer: null,
-  notificationTimers: []
+  notificationTimers: [],
+  calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
 };
 
 const els = {
@@ -86,6 +87,12 @@ const els = {
   meetingTimezone: q("#meetingTimezone"),
   meetingPreview: q("#meetingPreview"),
   meetingPlace: q("#meetingPlace"),
+  importantDayForm: q("#importantDayForm"),
+  importantTitle: q("#importantTitle"),
+  importantDate: q("#importantDate"),
+  importantTime: q("#importantTime"),
+  importantRepeat: q("#importantRepeat"),
+  importantNote: q("#importantNote"),
   inviteDisplay: q("#inviteDisplay"),
   memberInfo: q("#memberInfo"),
   enableNotifications: q("#enableNotifications"),
@@ -142,6 +149,7 @@ function bindEvents() {
   on(els.wishForm, "submit", addWish);
   on(els.datePlanForm, "submit", addPlan);
   on(els.meetingForm, "submit", saveMeeting);
+  on(els.importantDayForm, "submit", addImportantDay);
   on(els.meetingAt, "input", renderMeetingPreview);
   on(els.meetingTimezone, "change", () => {
     localStorage.setItem(timezoneKey, els.meetingTimezone.value);
@@ -331,10 +339,38 @@ async function saveMeeting(event) {
   render();
 }
 
+async function addImportantDay(event) {
+  event.preventDefault();
+  const title = els.importantTitle.value.trim();
+  const date = els.importantDate.value;
+  if (!title || !date) return;
+  const type = els.importantRepeat.checked ? "纪念日" : "重要日";
+  const { data, error } = await state.supabase.from("events").insert({
+    pair_id: state.pair.id,
+    title,
+    date,
+    time: els.importantTime.value || null,
+    location: "",
+    type,
+    note: els.importantNote.value.trim(),
+    created_by: state.user.id
+  }).select().single();
+  if (error) return alert(error.message);
+  els.importantDayForm.reset();
+  await logActivity(state.pair.id, "created_important_day", "event", data.id, `添加了${type}：${title}`);
+  await reloadAndRender();
+}
+
 async function handleActions(event) {
   const toggleTodo = event.target.closest("[data-toggle-todo]");
   const toggleWish = event.target.closest("[data-toggle-wish]");
   const deleteEvent = event.target.closest("[data-delete-event]");
+  const calendarMove = event.target.closest("[data-calendar-move]");
+  if (calendarMove) {
+    state.calendarMonth.setMonth(state.calendarMonth.getMonth() + Number(calendarMove.dataset.calendarMove));
+    renderHomeCalendar();
+    return;
+  }
   if (toggleTodo) {
     const item = state.todos.find((todo) => todo.id === toggleTodo.dataset.toggleTodo);
     if (!item) return;
@@ -380,15 +416,13 @@ function renderHome() {
   renderCountdown();
   renderHomeCalendar();
   els.activityList.innerHTML = state.activities.length ? state.activities.map((item) => `<article class="item-card"><div class="item-title">${escapeHtml(item.text)}</div><div class="item-meta"><span class="pill">${formatDateTime(item.created_at)}</span></div></article>`).join("") : empty("还没有更新。");
-  const weekEnd = new Date();
-  weekEnd.setDate(weekEnd.getDate() + 7);
-  const entries = getCalendarEntries().filter((entry) => entry.date >= startOfToday() && entry.date <= weekEnd).slice(0, 6);
-  els.weekEvents.innerHTML = entries.length ? entries.map(renderCalendarEntryCard).join("") : empty("本周没有共同日历。");
+  const entries = getCalendarEntries().filter((entry) => entry.date >= startOfToday()).slice(0, 1);
+  els.weekEvents.innerHTML = entries.length ? entries.map(renderCalendarEntryCard).join("") : empty("还没有近期安排。");
 }
 
 function renderHomeCalendar() {
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStart = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth(), 1);
   const firstCell = new Date(monthStart);
   firstCell.setDate(1 - ((monthStart.getDay() + 6) % 7));
   const entries = getCalendarEntries();
@@ -396,11 +430,11 @@ function renderHomeCalendar() {
     const date = new Date(firstCell);
     date.setDate(firstCell.getDate() + index);
     const key = toDateKey(date);
-    const dayEntries = entries.filter((entry) => toDateKey(entry.date) === key);
-    const classes = ["calendar-day", date.getMonth() === now.getMonth() ? "" : "muted-day", toDateKey(date) === toDateKey(now) ? "today" : "", dayEntries.length ? "has-items" : ""].filter(Boolean).join(" ");
+    const dayEntries = entries.filter((entry) => toDateKey(entry.date) === key || (entry.repeatsYearly && entry.date.getMonth() === date.getMonth() && entry.date.getDate() === date.getDate()));
+    const classes = ["calendar-day", date.getMonth() === monthStart.getMonth() ? "" : "muted-day", toDateKey(date) === toDateKey(now) ? "today" : "", dayEntries.length ? "has-items" : ""].filter(Boolean).join(" ");
     return `<div class="${classes}"><span>${date.getDate()}</span>${dayEntries.slice(0, 3).map((entry) => `<i class="${entry.owner} ${entry.kind}" title="${escapeHtml(entry.title)}"></i>`).join("")}</div>`;
   }).join("");
-  els.homeCalendar.innerHTML = `<div class="calendar-head"><strong>${now.getFullYear()}年 ${now.getMonth() + 1}月</strong><span>每年纪念日会自动出现在对应月份</span></div><div class="calendar-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="calendar-grid">${cells}</div><div class="calendar-legend"><span><i class="mine"></i>我添加</span><span><i class="partner"></i>对方添加</span><span><i class="meeting"></i>见面</span><span><i class="anniversary"></i>纪念日</span></div>`;
+  els.homeCalendar.innerHTML = `<div class="calendar-head"><button data-calendar-move="-1" type="button">‹</button><strong>${monthStart.getFullYear()}年 ${monthStart.getMonth() + 1}月</strong><button data-calendar-move="1" type="button">›</button></div><p class="quiet">每年重复的重要日会自动出现在对应月份。</p><div class="calendar-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="calendar-grid">${cells}</div><div class="calendar-legend"><span><i class="mine"></i>我添加</span><span><i class="partner"></i>对方添加</span><span><i class="meeting"></i>见面</span><span><i class="anniversary"></i>每年重复</span></div>`;
 }
 
 function renderCountdown() {
@@ -418,7 +452,7 @@ function renderCountdown() {
     const hours = Math.floor((diff % 86400000) / 3600000);
     els.countdownText.textContent = `${days} 天 ${hours} 小时`;
   }
-  els.meetingMeta.innerHTML = `${renderMeetingTimes(meetingDate)}${state.pair.next_meeting_place ? `<br>${escapeHtml(state.pair.next_meeting_place)}` : "<br>未设置地点"}`;
+  els.meetingMeta.innerHTML = `${renderMeetingTimes(meetingDate)}${state.pair.next_meeting_place ? `<span class="place-line">地点：${escapeHtml(state.pair.next_meeting_place)}</span>` : `<span class="place-line">地点：未设置</span>`}`;
 }
 
 function renderEvents() {
@@ -519,7 +553,7 @@ function renderMeetingPreview() {
 }
 
 function renderMeetingTimes(date) {
-  return `<span class="time-stack"><span>柏林 ${formatInTimezone(date, "Europe/Berlin")}</span><span>北京时间 ${formatInTimezone(date, "Asia/Shanghai")}</span></span>`;
+  return `<span class="time-stack"><span>德国柏林时间 ${formatInTimezone(date, "Europe/Berlin")}</span><span>中国北京时间 ${formatInTimezone(date, "Asia/Shanghai")}</span></span>`;
 }
 
 function getCalendarEntries() {
@@ -530,10 +564,11 @@ function getCalendarEntries() {
       title: event.title,
       date,
       time: event.time || "",
-      label: event.type || "日历",
+      label: event.type === "纪念日" ? "每年重复" : event.type || "日历",
       kind: event.type === "纪念日" ? "anniversary" : "event",
       owner: event.created_by === state.user.id ? "mine" : "partner",
       ownerLabel: event.created_by === state.user.id ? "我添加" : "对方添加",
+      repeatsYearly: event.type === "纪念日",
       meta: [event.location, event.note].filter(Boolean).join(" · "),
       notifyAt: event.time ? zonedDateTimeToUtcIso(`${toDateKey(date)}T${event.time.slice(0, 5)}`, els.meetingTimezone?.value || guessMeetingTimezone()) : null
     };
@@ -549,6 +584,7 @@ function getCalendarEntries() {
       kind: "plan",
       owner: plan.created_by === state.user.id ? "mine" : "partner",
       ownerLabel: plan.created_by === state.user.id ? "我添加" : "对方添加",
+      repeatsYearly: false,
       meta: plan.location || "",
       notifyAt: null
     });
@@ -563,6 +599,7 @@ function getCalendarEntries() {
       kind: "meeting",
       owner: "meeting",
       ownerLabel: "见面提醒",
+      repeatsYearly: false,
       meta: state.pair.next_meeting_place || "",
       notifyAt: state.pair.next_meeting_at
     });
@@ -665,16 +702,17 @@ function guessMeetingTimezone() {
 }
 
 function formatInTimezone(value, timeZone) {
-  return new Intl.DateTimeFormat("zh-CN", {
+  const dateText = new Intl.DateTimeFormat("zh-CN", {
     timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
-    timeZoneName: "short"
+    hour12: false
   }).format(value);
+  const offset = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" }).formatToParts(value).find((part) => part.type === "timeZoneName")?.value || "";
+  return `${dateText}${offset ? ` (${offset})` : ""}`;
 }
 
 function formatForDateTimeInput(value, timeZone) {

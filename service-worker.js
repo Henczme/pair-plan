@@ -1,4 +1,4 @@
-const cacheName = "pair-plan-v2";
+const cacheName = "pair-plan-v3";
 const appShell = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
