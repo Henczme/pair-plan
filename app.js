@@ -31,6 +31,8 @@ const els = {
   supabaseKey: q("#supabaseKey"),
   loginForm: q("#loginForm"),
   email: q("#email"),
+  password: q("#password"),
+  registerAccount: q("#registerAccount"),
   createPairForm: q("#createPairForm"),
   pairName: q("#pairName"),
   creatorNickname: q("#creatorNickname"),
@@ -106,9 +108,20 @@ function bindEvents() {
   on(els.loginForm, "submit", async (event) => {
     event.preventDefault();
     const email = els.email.value.trim();
-    if (!email) return;
-    const { error } = await state.supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href } });
-    alert(error ? error.message : "登录链接已发送，请检查邮箱。");
+    const password = els.password.value;
+    if (!email || !password) return;
+    const { error } = await state.supabase.auth.signInWithPassword({ email, password });
+    if (error) return alert(error.message);
+    location.reload();
+  });
+  on(els.registerAccount, "click", async () => {
+    const email = els.email.value.trim();
+    const password = els.password.value;
+    if (!email || !password) return alert("请输入邮箱和至少 6 位密码。");
+    const { error } = await state.supabase.auth.signUp({ email, password });
+    if (error) return alert(error.message);
+    alert("注册成功，正在进入。");
+    location.reload();
   });
   on(els.createPairForm, "submit", createPair);
   on(els.joinPairForm, "submit", joinPair);

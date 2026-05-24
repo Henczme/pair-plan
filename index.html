@@ -57,10 +57,12 @@
         <section class="gate" id="authGate">
           <div class="panel">
             <h3>登录</h3>
-            <p class="quiet">输入邮箱后 Supabase 会发送 magic link。两个人各自用自己的邮箱登录。</p>
+            <p class="quiet">两个人各自用自己的邮箱和密码登录。第一次使用先注册账号。</p>
             <form class="form-grid" id="loginForm">
               <label><span>邮箱</span><input id="email" type="email" autocomplete="email" /></label>
-              <button class="primary-button full-width" type="submit">发送登录链接</button>
+              <label><span>密码</span><input id="password" type="password" autocomplete="current-password" minlength="6" /></label>
+              <button class="primary-button full-width" type="submit">登录</button>
+              <button class="secondary-button full-width" id="registerAccount" type="button">注册新账号</button>
             </form>
           </div>
         </section>
