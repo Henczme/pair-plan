@@ -1,6 +1,10 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 const configKey = "pairplan_config_v1";
+const defaultConfig = {
+  url: "https://wjozttzjtkpvclfcswev.supabase.co",
+  key: "sb_publishable_69E3qjsbgGUq0119_Km4yA_t-phZznJ"
+};
 const state = {
   supabase: null,
   user: null,
@@ -390,9 +394,9 @@ function quickAdd() {
 
 function loadConfig() {
   try {
-    return JSON.parse(localStorage.getItem("pairplan_config_v1"));
+    return JSON.parse(localStorage.getItem(configKey)) || defaultConfig;
   } catch {
-    return null;
+    return defaultConfig;
   }
 }
 
