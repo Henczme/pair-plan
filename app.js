@@ -92,6 +92,8 @@ const els = {
   importantDate: q("#importantDate"),
   importantTime: q("#importantTime"),
   importantRepeat: q("#importantRepeat"),
+  importantCountup: q("#importantCountup"),
+  importantCountdown: q("#importantCountdown"),
   importantNote: q("#importantNote"),
   inviteDisplay: q("#inviteDisplay"),
   memberInfo: q("#memberInfo"),
@@ -271,6 +273,7 @@ async function reloadEverythingAndRender() {
 
 async function addEvent(event) {
   event.preventDefault();
+  const repeatsYearly = els.eventType.value === "纪念日";
   const row = {
     pair_id: state.pair.id,
     title: els.eventTitle.value.trim(),
@@ -279,6 +282,9 @@ async function addEvent(event) {
     location: els.eventLocation.value.trim(),
     type: els.eventType.value,
     note: els.eventNote.value.trim(),
+    repeats_yearly: repeatsYearly,
+    show_countup: repeatsYearly,
+    show_countdown: true,
     created_by: state.user.id
   };
   if (!row.title || !row.date) return;
@@ -353,6 +359,9 @@ async function addImportantDay(event) {
     location: "",
     type,
     note: els.importantNote.value.trim(),
+    repeats_yearly: els.importantRepeat.checked,
+    show_countup: els.importantCountup.checked,
+    show_countdown: els.importantCountdown.checked,
     created_by: state.user.id
   }).select().single();
   if (error) return alert(error.message);
@@ -430,7 +439,10 @@ function renderHomeCalendar() {
     const date = new Date(firstCell);
     date.setDate(firstCell.getDate() + index);
     const key = toDateKey(date);
-    const dayEntries = entries.filter((entry) => toDateKey(entry.date) === key || (entry.repeatsYearly && entry.date.getMonth() === date.getMonth() && entry.date.getDate() === date.getDate()));
+    const dayEntries = entries.filter((entry) => {
+      const calendarDate = entry.startedDate || entry.date;
+      return toDateKey(entry.date) === key || (entry.repeatsYearly && calendarDate.getMonth() === date.getMonth() && calendarDate.getDate() === date.getDate());
+    });
     const classes = ["calendar-day", date.getMonth() === monthStart.getMonth() ? "" : "muted-day", toDateKey(date) === toDateKey(now) ? "today" : "", dayEntries.length ? "has-items" : ""].filter(Boolean).join(" ");
     return `<div class="${classes}"><span>${date.getDate()}</span>${dayEntries.slice(0, 3).map((entry) => `<i class="${entry.owner} ${entry.kind}" title="${escapeHtml(entry.title)}"></i>`).join("")}</div>`;
   }).join("");
@@ -460,11 +472,12 @@ function renderEvents() {
 }
 
 function renderEventCard(event) {
-  return `<article class="item-card"><div class="item-meta"><span class="pill">${escapeHtml(event.type)}</span><span class="pill">${escapeHtml(event.date)} ${event.time || ""}</span></div><div class="item-title">${escapeHtml(event.title)}</div><p class="quiet">${escapeHtml(event.location || "")}${event.note ? " · " + escapeHtml(event.note) : ""}</p><div class="item-actions"><button data-delete-event="${event.id}" type="button">删除</button></div></article>`;
+  const entry = calendarEntryFromEvent(event);
+  return `<article class="item-card"><div class="item-meta"><span class="pill">${escapeHtml(event.type || "日历")}</span><span class="pill">${escapeHtml(event.date)} ${event.time || ""}</span>${renderDateMetricPills(entry)}</div><div class="item-title">${escapeHtml(event.title)}</div><p class="quiet">${escapeHtml(event.location || "")}${event.note ? " · " + escapeHtml(event.note) : ""}</p><div class="item-actions"><button data-delete-event="${event.id}" type="button">删除</button></div></article>`;
 }
 
 function renderCalendarEntryCard(entry) {
-  return `<article class="item-card"><div class="item-meta"><span class="pill">${escapeHtml(entry.label)}</span><span class="pill">${formatDateOnly(entry.date)} ${entry.time || ""}</span><span class="pill">${entry.ownerLabel}</span></div><div class="item-title">${escapeHtml(entry.title)}</div><p class="quiet">${escapeHtml(entry.meta || "")}</p></article>`;
+  return `<article class="item-card"><div class="item-meta"><span class="pill">${escapeHtml(entry.label)}</span><span class="pill">${formatDateOnly(entry.date)} ${entry.time || ""}</span><span class="pill">${entry.ownerLabel}</span>${renderDateMetricPills(entry)}</div><div class="item-title">${escapeHtml(entry.title)}</div><p class="quiet">${escapeHtml(entry.meta || "")}</p></article>`;
 }
 
 function renderTodos() {
@@ -557,34 +570,22 @@ function renderMeetingTimes(date) {
 }
 
 function getCalendarEntries() {
-  const entries = state.events.map((event) => {
-    const date = getDisplayDateForEvent(event);
-    return {
-      id: `event-${event.id}`,
-      title: event.title,
-      date,
-      time: event.time || "",
-      label: event.type === "纪念日" ? "每年重复" : event.type || "日历",
-      kind: event.type === "纪念日" ? "anniversary" : "event",
-      owner: event.created_by === state.user.id ? "mine" : "partner",
-      ownerLabel: event.created_by === state.user.id ? "我添加" : "对方添加",
-      repeatsYearly: event.type === "纪念日",
-      meta: [event.location, event.note].filter(Boolean).join(" · "),
-      notifyAt: event.time ? zonedDateTimeToUtcIso(`${toDateKey(date)}T${event.time.slice(0, 5)}`, els.meetingTimezone?.value || guessMeetingTimezone()) : null
-    };
-  });
+  const entries = state.events.map(calendarEntryFromEvent);
   state.plans.forEach((plan) => {
     if (!plan.date) return;
     entries.push({
       id: `plan-${plan.id}`,
       title: plan.title,
       date: parseDateOnly(plan.date),
+      startedDate: parseDateOnly(plan.date),
       time: "",
       label: "约会计划",
       kind: "plan",
       owner: plan.created_by === state.user.id ? "mine" : "partner",
       ownerLabel: plan.created_by === state.user.id ? "我添加" : "对方添加",
       repeatsYearly: false,
+      showCountup: false,
+      showCountdown: false,
       meta: plan.location || "",
       notifyAt: null
     });
@@ -594,12 +595,15 @@ function getCalendarEntries() {
       id: `meeting-${state.pair.id}`,
       title: "下一次见面",
       date: new Date(state.pair.next_meeting_at),
+      startedDate: new Date(state.pair.next_meeting_at),
       time: formatTimeOnly(state.pair.next_meeting_at),
       label: "见面",
       kind: "meeting",
       owner: "meeting",
       ownerLabel: "见面提醒",
       repeatsYearly: false,
+      showCountup: false,
+      showCountdown: false,
       meta: state.pair.next_meeting_place || "",
       notifyAt: state.pair.next_meeting_at
     });
@@ -607,12 +611,60 @@ function getCalendarEntries() {
   return entries.sort((a, b) => a.date - b.date);
 }
 
+function calendarEntryFromEvent(event) {
+  const repeatsYearly = isRepeatingEvent(event);
+  const date = getDisplayDateForEvent(event);
+  const startedDate = parseDateOnly(event.date);
+  return {
+    id: `event-${event.id}`,
+    title: event.title,
+    date,
+    startedDate,
+    time: event.time || "",
+    label: repeatsYearly ? "每年重复" : event.type || "日历",
+    kind: repeatsYearly ? "anniversary" : "event",
+    owner: event.created_by === state.user.id ? "mine" : "partner",
+    ownerLabel: event.created_by === state.user.id ? "我添加" : "对方添加",
+    repeatsYearly,
+    showCountup: event.show_countup ?? repeatsYearly,
+    showCountdown: event.show_countdown !== false,
+    meta: [event.location, event.note].filter(Boolean).join(" · "),
+    notifyAt: event.time ? zonedDateTimeToUtcIso(`${toDateKey(date)}T${event.time.slice(0, 5)}`, els.meetingTimezone?.value || guessMeetingTimezone()) : null
+  };
+}
+
 function getDisplayDateForEvent(event) {
   const date = parseDateOnly(event.date);
-  if (event.type !== "纪念日") return date;
+  if (!isRepeatingEvent(event)) return date;
   const now = new Date();
   const currentYearDate = new Date(now.getFullYear(), date.getMonth(), date.getDate());
   return currentYearDate < startOfToday() ? new Date(now.getFullYear() + 1, date.getMonth(), date.getDate()) : currentYearDate;
+}
+
+function isRepeatingEvent(event) {
+  return Boolean(event.repeats_yearly) || event.type === "纪念日";
+}
+
+function renderDateMetricPills(entry) {
+  const metrics = getDateMetrics(entry);
+  const pills = [];
+  if (entry.showCountup && metrics.countupText) pills.push(`<span class="pill metric-pill">${metrics.countupText}</span>`);
+  if (entry.showCountdown && metrics.countdownText) pills.push(`<span class="pill metric-pill">${metrics.countdownText}</span>`);
+  return pills.join("");
+}
+
+function getDateMetrics(entry) {
+  const today = startOfToday();
+  const started = startOfDate(entry.startedDate || entry.date);
+  const target = startOfDate(entry.date);
+  const passedDays = Math.floor((today - started) / 86400000);
+  const daysUntil = Math.ceil((target - today) / 86400000);
+  const countupText = passedDays >= 0 ? `已经 ${passedDays} 天` : `还有 ${Math.abs(passedDays)} 天开始`;
+  let countdownText = "";
+  if (daysUntil > 0) countdownText = `下次还有 ${daysUntil} 天`;
+  else if (daysUntil === 0) countdownText = entry.repeatsYearly ? "下次就是今天" : "就是今天";
+  else countdownText = `已过 ${Math.abs(daysUntil)} 天`;
+  return { countupText, countdownText };
 }
 
 function scheduleNotifications() {
@@ -678,6 +730,12 @@ function startOfToday() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return today;
+}
+
+function startOfDate(value) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
 function toDateKey(value) {

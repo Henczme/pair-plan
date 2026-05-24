@@ -28,6 +28,9 @@ create table public.events (
   location text,
   type text,
   note text,
+  repeats_yearly boolean not null default false,
+  show_countup boolean not null default false,
+  show_countdown boolean not null default true,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
