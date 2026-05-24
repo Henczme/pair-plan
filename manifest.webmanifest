@@ -1,0 +1,19 @@
+{
+  "name": "PairPlan",
+  "short_name": "PairPlan",
+  "description": "情侣共享日历、愿望清单和约会计划",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f1eb",
+  "theme_color": "#2c2428",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

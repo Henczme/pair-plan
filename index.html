@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#2c2428" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="PairPlan" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>PairPlan</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="rail" aria-label="主导航">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">P</div>
+          <div>
+            <h1>PairPlan</h1>
+            <p>两个人的共享计划空间</p>
+          </div>
+        </div>
+        <nav class="tabs" aria-label="视图切换">
+          <button class="tab active" data-view="home" type="button">首页</button>
+          <button class="tab" data-view="calendar" type="button">日历</button>
+          <button class="tab" data-view="together" type="button">一起做</button>
+          <button class="tab" data-view="wishlist" type="button">愿望</button>
+          <button class="tab" data-view="dates" type="button">约会</button>
+          <button class="tab" data-view="settings" type="button">设置</button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="spaceLabel">共享空间</p>
+            <h2 id="viewTitle">首页</h2>
+          </div>
+          <button class="primary-button" id="quickAdd" type="button">新增</button>
+        </header>
+
+        <section class="gate" id="setupGate">
+          <div class="panel">
+            <h3>连接 Supabase</h3>
+            <p class="quiet">为了让双方实时同步，这个 app 需要连接你的 Supabase 项目。先在 Supabase SQL Editor 运行仓库里的 `supabase/schema.sql`，再填入 Project URL 和 anon public key。</p>
+            <form class="form-grid" id="configForm">
+              <label><span>Supabase URL</span><input id="supabaseUrl" placeholder="https://xxxx.supabase.co" /></label>
+              <label><span>Anon public key</span><textarea id="supabaseKey" rows="3"></textarea></label>
+              <button class="primary-button full-width" type="submit">保存并连接</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="gate" id="authGate">
+          <div class="panel">
+            <h3>登录</h3>
+            <p class="quiet">输入邮箱后 Supabase 会发送 magic link。两个人各自用自己的邮箱登录。</p>
+            <form class="form-grid" id="loginForm">
+              <label><span>邮箱</span><input id="email" type="email" autocomplete="email" /></label>
+              <button class="primary-button full-width" type="submit">发送登录链接</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="gate" id="pairGate">
+          <div class="pair-grid">
+            <form class="panel form-grid" id="createPairForm">
+              <h3>创建共享空间</h3>
+              <label><span>空间名</span><input id="pairName" placeholder="我们的计划" /></label>
+              <label><span>我的昵称</span><input id="creatorNickname" /></label>
+              <button class="primary-button full-width" type="submit">创建并生成邀请码</button>
+            </form>
+            <form class="panel form-grid" id="joinPairForm">
+              <h3>加入共享空间</h3>
+              <label><span>邀请码</span><input id="inviteCode" /></label>
+              <label><span>我的昵称</span><input id="joinNickname" /></label>
+              <button class="secondary-button full-width" type="submit">加入</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="workspace active" id="workspace">
+          <section class="view active" id="homeView">
+            <div class="summary-grid">
+              <article class="hero-card">
+                <span>下一次见面</span>
+                <strong id="countdownText">未设置</strong>
+                <p id="meetingMeta">在设置里添加日期和地点。</p>
+              </article>
+              <article class="summary-card">
+                <span>一起做</span>
+                <strong id="todoCount">0</strong>
+                <p>未完成事项</p>
+              </article>
+              <article class="summary-card">
+                <span>愿望</span>
+                <strong id="wishCount">0</strong>
+                <p>想一起实现</p>
+              </article>
+              <article class="summary-card">
+                <span>约会计划</span>
+                <strong id="dateCount">0</strong>
+                <p>计划中</p>
+              </article>
+            </div>
+            <div class="home-grid">
+              <section class="panel">
+                <h3>最近更新</h3>
+                <div class="list" id="activityList"></div>
+              </section>
+              <section class="panel">
+                <h3>本周日历</h3>
+                <div class="list" id="weekEvents"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="calendarView">
+            <div class="content-grid">
+              <form class="panel form-grid" id="eventForm">
+                <h3>添加日历事件</h3>
+                <label><span>标题</span><input id="eventTitle" /></label>
+                <div class="row">
+                  <label><span>日期</span><input id="eventDate" type="date" /></label>
+                  <label><span>时间</span><input id="eventTime" type="time" /></label>
+                </div>
+                <label><span>地点</span><input id="eventLocation" /></label>
+                <label><span>类型</span><select id="eventType"><option>见面</option><option>约会</option><option>纪念日</option><option>旅行</option><option>其他</option></select></label>
+                <label><span>备注</span><textarea id="eventNote" rows="3"></textarea></label>
+                <button class="primary-button full-width" type="submit">添加事件</button>
+              </form>
+              <div class="list" id="eventList"></div>
+            </div>
+          </section>
+
+          <section class="view" id="togetherView">
+            <div class="content-grid">
+              <form class="panel form-grid" id="todoForm">
+                <h3>一起做的事</h3>
+                <label><span>事情</span><input id="todoTitle" /></label>
+                <label><span>分类</span><input id="todoCategory" placeholder="旅行、生活、学习..." /></label>
+                <label><span>优先级</span><select id="todoPriority"><option value="high">很想做</option><option value="medium">想做</option><option value="low">以后再说</option></select></label>
+                <button class="primary-button full-width" type="submit">添加</button>
+              </form>
+              <div class="list" id="todoList"></div>
+            </div>
+          </section>
+
+          <section class="view" id="wishlistView">
+            <div class="content-grid">
+              <form class="panel form-grid" id="wishForm">
+                <h3>愿望清单</h3>
+                <label><span>愿望</span><input id="wishTitle" /></label>
+                <label><span>分类</span><select id="wishCategory"><option>想吃</option><option>想去</option><option>想买</option><option>想体验</option><option>其他</option></select></label>
+                <label><span>预算</span><input id="wishCost" inputmode="decimal" /></label>
+                <label><span>优先级</span><select id="wishPriority"><option value="high">很想要</option><option value="medium">想要</option><option value="low">随缘</option></select></label>
+                <button class="primary-button full-width" type="submit">添加愿望</button>
+              </form>
+              <div class="list" id="wishList"></div>
+            </div>
+          </section>
+
+          <section class="view" id="datesView">
+            <div class="content-grid">
+              <form class="panel form-grid" id="datePlanForm">
+                <h3>约会计划</h3>
+                <label><span>标题</span><input id="planTitle" /></label>
+                <div class="row">
+                  <label><span>日期</span><input id="planDate" type="date" /></label>
+                  <label><span>预算</span><input id="planBudget" inputmode="decimal" /></label>
+                </div>
+                <label><span>地点</span><input id="planLocation" /></label>
+                <label><span>准备清单</span><textarea id="planSteps" rows="4" placeholder="一行一项：订票&#10;预约餐厅"></textarea></label>
+                <label><span>备注</span><textarea id="planNote" rows="3"></textarea></label>
+                <button class="primary-button full-width" type="submit">创建计划</button>
+              </form>
+              <div class="list" id="planList"></div>
+            </div>
+          </section>
+
+          <section class="view" id="settingsView">
+            <div class="settings-grid">
+              <form class="panel form-grid" id="meetingForm">
+                <h3>下一次见面</h3>
+                <label><span>日期时间</span><input id="meetingAt" type="datetime-local" /></label>
+                <label><span>地点</span><input id="meetingPlace" /></label>
+                <button class="primary-button full-width" type="submit">保存见面信息</button>
+              </form>
+              <section class="panel">
+                <h3>邀请码</h3>
+                <p class="invite-code" id="inviteDisplay">----</p>
+                <p class="quiet">把邀请码发给对方，对方登录后输入即可加入同一个共享空间。</p>
+              </section>
+              <section class="panel">
+                <h3>账户</h3>
+                <p id="memberInfo" class="quiet"></p>
+                <button class="secondary-button full-width" id="signOut" type="button">退出登录</button>
+              </section>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
